@@ -112,7 +112,7 @@ Add to your Claude Desktop MCP config (`~/Library/Application Support/Claude/cla
 }
 ```
 
-Or install directly from GitHub (no local clone needed):
+#### Option B: Directly from GitHub (no local clone)
 
 ```json
 {
@@ -120,11 +120,42 @@ Or install directly from GitHub (no local clone needed):
     "fatsecret": {
       "command": "npx",
       "args": ["-y", "github:Yurzs/fatsecret-mcp-server"],
-      "env": { ... }
+      "env": {
+        "FATSECRET_CLIENT_ID": "your_consumer_key",
+        "FATSECRET_CONSUMER_SECRET": "your_oauth1_consumer_secret",
+        "FATSECRET_OAUTH2_CLIENT_SECRET": "your_oauth2_client_secret",
+        "FATSECRET_ACCESS_TOKEN": "your_access_token",
+        "FATSECRET_ACCESS_TOKEN_SECRET": "your_access_token_secret"
+      }
     }
   }
 }
 ```
+
+This downloads and runs the server directly from the repo — no `git clone`, `npm install`, or `npm run build` needed. `npx` caches it locally after the first run.
+
+**Note:** If you've used this before and need to pull updates, clear the npx cache first:
+
+```bash
+rm -rf ~/.npm/_npx
+```
+
+#### Getting user tokens without cloning
+
+You can run the OAuth setup script directly too:
+
+```bash
+npx -y github:Yurzs/fatsecret-mcp-server/scripts/oauth-setup.js
+```
+
+Or with a one-liner using `curl`:
+
+```bash
+curl -sL https://raw.githubusercontent.com/Yurzs/fatsecret-mcp-server/master/scripts/oauth-setup.js | \
+  FATSECRET_CLIENT_ID=your_key FATSECRET_CLIENT_SECRET=your_consumer_secret node -
+```
+
+This starts a local server at `http://localhost:9876`, opens your browser, and walks you through the FatSecret authorization. The tokens are printed to the terminal when complete.
 
 ## Typical Workflow
 
