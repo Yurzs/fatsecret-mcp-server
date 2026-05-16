@@ -11,6 +11,7 @@
 export declare function makeAppRequest<T>(method: string, params?: Record<string, string | number | undefined>): Promise<T>;
 /**
  * Make an OAuth 1.0a authenticated request (user-level).
+ * Uses the oauth-1.0a library for reliable signature generation.
  * Used for: food diary, saved meals, weight diary, etc.
  */
 export declare function makeUserRequest<T>(method: string, params?: Record<string, string | number | undefined>): Promise<T>;

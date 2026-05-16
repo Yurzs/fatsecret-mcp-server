@@ -758,7 +758,7 @@ async function main() {
         }
     }
     if (!creds.hasAppCredentials) {
-        console.error("❌ Cannot start: missing app credentials (FATSECRET_CLIENT_ID / FATSECRET_CLIENT_SECRET)");
+        console.error("❌ Cannot start: missing app credentials (FATSECRET_CLIENT_ID + FATSECRET_CONSUMER_SECRET / FATSECRET_OAUTH2_CLIENT_SECRET)");
         process.exit(1);
     }
     if (!creds.hasUserCredentials) {

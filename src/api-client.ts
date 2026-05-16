@@ -7,6 +7,7 @@
 
 import axios, { AxiosError } from "axios";
 import crypto from "crypto";
+import OAuth from "oauth-1.0a";
 import { API_BASE_URL, OAUTH2_TOKEN_URL } from "./constants.js";
 import { checkRateLimit, recordApiCall, redactSensitive } from "./security.js";
 
@@ -22,11 +23,12 @@ async function getOAuth2Token(): Promise<string> {
   }
 
   const clientId = process.env.FATSECRET_CLIENT_ID;
-  const clientSecret = process.env.FATSECRET_CLIENT_SECRET;
+  // OAuth 2.0 uses its own Client Secret (separate from OAuth 1.0a Consumer Secret)
+  const clientSecret = process.env.FATSECRET_OAUTH2_CLIENT_SECRET || process.env.FATSECRET_CLIENT_SECRET;
 
   if (!clientId || !clientSecret) {
     throw new Error(
-      "Missing FATSECRET_CLIENT_ID or FATSECRET_CLIENT_SECRET environment variables. " +
+      "Missing FATSECRET_CLIENT_ID or FATSECRET_OAUTH2_CLIENT_SECRET environment variables. " +
       "Register at https://platform.fatsecret.com/register to get API credentials."
     );
   }
@@ -94,48 +96,9 @@ export async function makeAppRequest<T>(
 
 // ─── OAuth 1.0a (3-legged, user context) ──────────────────────────────────────
 
-function percentEncode(str: string): string {
-  return encodeURIComponent(str)
-    .replace(/!/g, "%21")
-    .replace(/\*/g, "%2A")
-    .replace(/'/g, "%27")
-    .replace(/\(/g, "%28")
-    .replace(/\)/g, "%29");
-}
-
-function generateNonce(): string {
-  return crypto.randomBytes(16).toString("hex");
-}
-
-function generateSignature(
-  httpMethod: string,
-  baseUrl: string,
-  params: Record<string, string>,
-  consumerSecret: string,
-  tokenSecret: string
-): string {
-  // Sort params alphabetically
-  const sortedKeys = Object.keys(params).sort();
-  const paramString = sortedKeys
-    .map((k) => `${percentEncode(k)}=${percentEncode(params[k])}`)
-    .join("&");
-
-  const signatureBase = [
-    httpMethod.toUpperCase(),
-    percentEncode(baseUrl),
-    percentEncode(paramString),
-  ].join("&");
-
-  const signingKey = `${percentEncode(consumerSecret)}&${percentEncode(tokenSecret)}`;
-
-  return crypto
-    .createHmac("sha1", signingKey)
-    .update(signatureBase)
-    .digest("base64");
-}
-
 /**
  * Make an OAuth 1.0a authenticated request (user-level).
+ * Uses the oauth-1.0a library for reliable signature generation.
  * Used for: food diary, saved meals, weight diary, etc.
  */
 export async function makeUserRequest<T>(
@@ -147,13 +110,14 @@ export async function makeUserRequest<T>(
   if (rateLimitError) throw new Error(rateLimitError);
 
   const consumerKey = process.env.FATSECRET_CLIENT_ID?.trim();
-  const consumerSecret = process.env.FATSECRET_CLIENT_SECRET?.trim();
+  // OAuth 1.0a uses Consumer Secret (separate from OAuth 2.0 Client Secret)
+  const consumerSecret = (process.env.FATSECRET_CONSUMER_SECRET || process.env.FATSECRET_CLIENT_SECRET)?.trim();
   const accessToken = process.env.FATSECRET_ACCESS_TOKEN?.trim();
   const accessTokenSecret = process.env.FATSECRET_ACCESS_TOKEN_SECRET?.trim();
 
   if (!consumerKey || !consumerSecret) {
     throw new Error(
-      "Missing FATSECRET_CLIENT_ID or FATSECRET_CLIENT_SECRET environment variables."
+      "Missing FATSECRET_CLIENT_ID or FATSECRET_CONSUMER_SECRET environment variables."
     );
   }
   if (!accessToken || !accessTokenSecret) {
@@ -165,47 +129,57 @@ export async function makeUserRequest<T>(
 
   const baseUrl = `${API_BASE_URL}/server.api`;
 
-  // Build params
-  const allParams: Record<string, string> = {
+  // Build API params (non-OAuth)
+  const apiParams: Record<string, string> = {
     method,
     format: "json",
-    oauth_consumer_key: consumerKey,
-    oauth_nonce: generateNonce(),
-    oauth_signature_method: "HMAC-SHA1",
-    oauth_timestamp: Math.floor(Date.now() / 1000).toString(),
-    oauth_token: accessToken,
-    oauth_version: "1.0",
   };
-
-  // Add API params (skip undefined)
   for (const [k, v] of Object.entries(params)) {
-    if (v !== undefined) allParams[k] = String(v);
+    if (v !== undefined) apiParams[k] = String(v);
   }
 
-  // Debug: log token info (redacted) to help diagnose signature issues
-  console.error(`[FatSecret] OAuth debug: token=${accessToken?.slice(0, 8)}... secret=${accessTokenSecret?.slice(0, 4)}... key=${consumerKey?.slice(0, 8)}...`);
-  console.error(`[FatSecret] OAuth debug: baseUrl=${baseUrl} method=${method}`);
+  // Use oauth-1.0a library for signing
+  const oauth = new OAuth({
+    consumer: { key: consumerKey, secret: consumerSecret },
+    signature_method: "HMAC-SHA1",
+    hash_function(baseString: string, key: string) {
+      return crypto.createHmac("sha1", key).update(baseString).digest("base64");
+    },
+  });
 
-  // Generate signature
-  const signature = generateSignature(
-    "POST",
-    baseUrl,
-    allParams,
-    consumerSecret,
-    accessTokenSecret
-  );
-  allParams["oauth_signature"] = signature;
+  const requestData = {
+    url: baseUrl,
+    method: "POST" as const,
+    data: apiParams,
+  };
 
+  const token = {
+    key: accessToken,
+    secret: accessTokenSecret,
+  };
+
+  const oauthData = oauth.authorize(requestData, token);
+  const authHeader = oauth.toHeader(oauthData);
+
+  console.error(`[FatSecret] ${method} OAuth1.0a request with token=${accessToken.slice(0, 8)}...`);
+  console.error(`[FatSecret] Auth header: ${authHeader.Authorization.slice(0, 80)}...`);
+
+  // OAuth params in Authorization header, API params in POST body
   const response = await axios.post(
     baseUrl,
-    new URLSearchParams(allParams).toString(),
+    new URLSearchParams(apiParams).toString(),
     {
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        ...authHeader,
+      },
       timeout: 30000,
     }
   );
 
   recordApiCall();
+
+  console.error(`[FatSecret] ${method} response:`, JSON.stringify(response.data).slice(0, 500));
 
   // FatSecret can return 200 with an error body
   if (response.data?.error) {

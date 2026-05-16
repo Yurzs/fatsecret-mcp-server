@@ -132,15 +132,18 @@ export function recordApiCall() {
 export function validateCredentials() {
     const errors = [];
     const clientId = process.env.FATSECRET_CLIENT_ID;
-    const clientSecret = process.env.FATSECRET_CLIENT_SECRET;
+    // OAuth 2.0 Client Secret (for food search/get)
+    const oauth2Secret = process.env.FATSECRET_OAUTH2_CLIENT_SECRET || process.env.FATSECRET_CLIENT_SECRET;
+    // OAuth 1.0a Consumer Secret (for diary/weight/user tools)
+    const consumerSecret = process.env.FATSECRET_CONSUMER_SECRET || process.env.FATSECRET_CLIENT_SECRET;
     const accessToken = process.env.FATSECRET_ACCESS_TOKEN;
     const accessTokenSecret = process.env.FATSECRET_ACCESS_TOKEN_SECRET;
-    const hasAppCredentials = !!(clientId && clientSecret);
+    const hasAppCredentials = !!(clientId && (oauth2Secret || consumerSecret));
     const hasUserCredentials = !!(accessToken && accessTokenSecret);
     if (!clientId)
         errors.push("FATSECRET_CLIENT_ID is not set");
-    if (!clientSecret)
-        errors.push("FATSECRET_CLIENT_SECRET is not set");
+    if (!oauth2Secret && !consumerSecret)
+        errors.push("No API secret set — need FATSECRET_CONSUMER_SECRET and/or FATSECRET_OAUTH2_CLIENT_SECRET");
     if (!accessToken)
         errors.push("FATSECRET_ACCESS_TOKEN is not set (diary tools will fail)");
     if (!accessTokenSecret)
@@ -148,9 +151,6 @@ export function validateCredentials() {
     // Basic format validation (don't log the actual values)
     if (clientId && clientId.length < 10) {
         errors.push("FATSECRET_CLIENT_ID looks too short — verify it's correct");
-    }
-    if (clientSecret && clientSecret.length < 10) {
-        errors.push("FATSECRET_CLIENT_SECRET looks too short — verify it's correct");
     }
     return { hasAppCredentials, hasUserCredentials, errors };
 }
@@ -174,6 +174,8 @@ export function redactSensitive(message) {
     // Environment variable values that might leak
     const envVars = [
         process.env.FATSECRET_CLIENT_SECRET,
+        process.env.FATSECRET_CONSUMER_SECRET,
+        process.env.FATSECRET_OAUTH2_CLIENT_SECRET,
         process.env.FATSECRET_ACCESS_TOKEN,
         process.env.FATSECRET_ACCESS_TOKEN_SECRET,
     ];
