@@ -1,0 +1,19 @@
+node_modules/
+dist/
+*.js.map
+*.d.ts.map
+
+# Environment (NEVER commit credentials)
+.env
+.env.*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Test artifacts
+coverage/
