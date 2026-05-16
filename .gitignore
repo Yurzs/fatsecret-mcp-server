@@ -17,3 +17,4 @@ Thumbs.db
 
 # Test artifacts
 coverage/
+vitest.config.ts.timestamp-*
