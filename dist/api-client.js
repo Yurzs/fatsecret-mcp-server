@@ -54,6 +54,12 @@ export async function makeAppRequest(method, params = {}) {
         timeout: 30000,
     });
     recordApiCall();
+    // Debug: log raw response to stderr (visible in Claude Desktop MCP logs)
+    console.error(`[FatSecret] ${method} response:`, JSON.stringify(response.data).slice(0, 500));
+    // FatSecret can return 200 with an error body
+    if (response.data?.error) {
+        throw new Error(`FatSecret API Error (code ${response.data.error.code}): ${response.data.error.message}`);
+    }
     return response.data;
 }
 // ─── OAuth 1.0a (3-legged, user context) ──────────────────────────────────────
@@ -130,6 +136,10 @@ export async function makeUserRequest(method, params = {}) {
         timeout: 30000,
     });
     recordApiCall();
+    // FatSecret can return 200 with an error body
+    if (response.data?.error) {
+        throw new Error(`FatSecret API Error (code ${response.data.error.code}): ${response.data.error.message}`);
+    }
     return response.data;
 }
 // ─── Error Handling ────────────────────────────────────────────────────────────
