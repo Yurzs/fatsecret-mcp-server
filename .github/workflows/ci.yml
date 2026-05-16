@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [18, 20, 22]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Build
+        run: npm run build
+
+      - name: Verify dist output
+        run: |
+          test -f dist/index.js || (echo "❌ dist/index.js not found" && exit 1)
+          test -f dist/api-client.js || (echo "❌ dist/api-client.js not found" && exit 1)
+          test -f dist/security.js || (echo "❌ dist/security.js not found" && exit 1)
+          echo "✅ All dist files present"
+
+      - name: Run tests
+        run: npm test
+
+  security-audit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Audit dependencies
+        run: npm audit --audit-level=high
+
+      - name: Check for secrets in code
+        run: |
+          echo "Checking for hardcoded secrets..."
+          # Fail if any env var values or common secret patterns are hardcoded
+          if grep -rn "FATSECRET_CLIENT_SECRET\s*=\s*[\"'][^\"']*[\"']" src/ tests/; then
+            echo "❌ Hardcoded secret found!"
+            exit 1
+          fi
+          if grep -rn "Bearer\s[A-Za-z0-9]" src/ --include="*.ts" | grep -v "test" | grep -v "\`Bearer \${"; then
+            echo "❌ Possible hardcoded Bearer token found!"
+            exit 1
+          fi
+          echo "✅ No hardcoded secrets detected"
