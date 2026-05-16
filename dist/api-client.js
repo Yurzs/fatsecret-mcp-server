@@ -100,10 +100,10 @@ export async function makeUserRequest(method, params = {}) {
     const rateLimitError = checkRateLimit();
     if (rateLimitError)
         throw new Error(rateLimitError);
-    const consumerKey = process.env.FATSECRET_CLIENT_ID;
-    const consumerSecret = process.env.FATSECRET_CLIENT_SECRET;
-    const accessToken = process.env.FATSECRET_ACCESS_TOKEN;
-    const accessTokenSecret = process.env.FATSECRET_ACCESS_TOKEN_SECRET;
+    const consumerKey = process.env.FATSECRET_CLIENT_ID?.trim();
+    const consumerSecret = process.env.FATSECRET_CLIENT_SECRET?.trim();
+    const accessToken = process.env.FATSECRET_ACCESS_TOKEN?.trim();
+    const accessTokenSecret = process.env.FATSECRET_ACCESS_TOKEN_SECRET?.trim();
     if (!consumerKey || !consumerSecret) {
         throw new Error("Missing FATSECRET_CLIENT_ID or FATSECRET_CLIENT_SECRET environment variables.");
     }
@@ -128,6 +128,9 @@ export async function makeUserRequest(method, params = {}) {
         if (v !== undefined)
             allParams[k] = String(v);
     }
+    // Debug: log token info (redacted) to help diagnose signature issues
+    console.error(`[FatSecret] OAuth debug: token=${accessToken?.slice(0, 8)}... secret=${accessTokenSecret?.slice(0, 4)}... key=${consumerKey?.slice(0, 8)}...`);
+    console.error(`[FatSecret] OAuth debug: baseUrl=${baseUrl} method=${method}`);
     // Generate signature
     const signature = generateSignature("POST", baseUrl, allParams, consumerSecret, accessTokenSecret);
     allParams["oauth_signature"] = signature;
